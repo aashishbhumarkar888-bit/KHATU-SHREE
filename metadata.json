@@ -1,0 +1,6 @@
+{
+  "name": "Khatu Shri — Dropshipping & Direct Wholesale Marketplace",
+  "description": "Bhopal's premier dropshipping and direct wholesale marketplace for farm-fresh A2 Gir cow dairy, apparel & sarees, organic staples, and handcrafted copperware.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

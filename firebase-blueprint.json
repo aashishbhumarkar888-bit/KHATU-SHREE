@@ -1,0 +1,104 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Registered user and reseller account with Khatu Shri loyalty points",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "khatuPoints": { "type": "number" },
+        "resellerMarkup": { "type": "number" },
+        "referralCode": { "type": "string", "maxLength": 64 },
+        "photoURL": { "type": "string", "maxLength": 512 },
+        "phoneNumber": { "type": "string", "maxLength": 32 },
+        "bhopalArea": { "type": "string", "maxLength": 128 },
+        "address": { "type": "string", "maxLength": 512 },
+        "pincode": { "type": "string", "maxLength": 16 },
+        "cart": { "type": "array" },
+        "wishlist": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "email", "createdAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer and reseller dropshipping order",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "items": { "type": "array" },
+        "wholesaleTotal": { "type": "number" },
+        "resaleValue": { "type": "number" },
+        "address": { "type": "object" },
+        "deliveryMethod": { "type": "string", "maxLength": 128 },
+        "packagingChoice": { "type": "string", "maxLength": 128 },
+        "paymentMode": { "type": "string", "maxLength": 64 },
+        "statusTimeline": { "type": "array" },
+        "status": { "type": "string", "enum": ["placed", "processing", "out_for_delivery", "shipped", "delivered", "cancelled"] },
+        "total": { "type": "number" },
+        "subtotal": { "type": "number" },
+        "deliveryCharge": { "type": "number" },
+        "discount": { "type": "number" },
+        "currency": { "type": "string", "maxLength": 8 },
+        "customerName": { "type": "string", "maxLength": 128 },
+        "customerEmail": { "type": "string", "maxLength": 256 },
+        "customerPhone": { "type": "string", "maxLength": 32 },
+        "deliverySlot": { "type": "string", "maxLength": 128 },
+        "trackingNumber": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["orderId", "userId", "items", "wholesaleTotal", "resaleValue", "deliveryMethod", "packagingChoice", "paymentMode", "status", "createdAt"]
+    },
+    "Wishlist": {
+      "title": "Wishlist",
+      "description": "User saved wishlist items",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "productIds": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "productIds", "updatedAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Marketplace product catalog item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 256 },
+        "price": { "type": "number" },
+        "compareAtPrice": { "type": "number" },
+        "stock": { "type": "number" },
+        "images": { "type": "array" },
+        "category": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "price"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User account document"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Store customer and reseller orders"
+    },
+    "/wishlists/{userId}": {
+      "schema": "Wishlist",
+      "description": "Customer wishlist bookmarks"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Catalog products for direct wholesale & dropshipping"
+    }
+  }
+}
