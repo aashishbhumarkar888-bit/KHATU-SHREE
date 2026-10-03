@@ -209,9 +209,17 @@ export const Footer: React.FC<FooterProps> = ({
           <div>
             <button
               onClick={onNavigateAdmin}
-              className="text-[11px] text-[#A8A29E] hover:text-white transition-colors cursor-pointer flex items-center gap-1"
+              className="text-[11px] text-[#A8A29E] hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 group"
+              title="Shortcut: Press Ctrl + Shift + A anywhere"
             >
               <span>Console /admin</span>
+              <div className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-white/10 group-hover:bg-[#1B4332] text-white/70 group-hover:text-[#DDA15E] text-[9px] font-mono border border-white/10 transition-colors">
+                <span>Ctrl</span>
+                <span>+</span>
+                <span>Shift</span>
+                <span>+</span>
+                <span>A</span>
+              </div>
             </button>
           </div>
         </div>

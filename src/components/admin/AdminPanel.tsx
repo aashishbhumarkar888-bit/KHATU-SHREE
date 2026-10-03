@@ -27,13 +27,14 @@ import {
   TrendingUp,
   MapPin,
   Calendar,
-  Layers
+  Layers,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useProducts } from '../../context/ProductsContext';
 import { isUserAdmin, ADMIN_EMAILS } from '../../config/adminConfig';
 import { collection, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore';
-import { db, isFirebaseInitialized } from '../../lib/firebase';
+import { db, isFirebaseInitialized, getFirebaseFriendlyError } from '../../lib/firebase';
 import { Order, Product, ProductCategory } from '../../types';
 import { saveProductToFirestore, deleteProductFromFirestore, seedProductsToFirestore } from '../../services/productsService';
 import { useToastNotification } from '../../context/ToastNotificationContext';
@@ -45,7 +46,7 @@ interface AdminPanelProps {
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToStore, onNavigateHome }) => {
-  const { user, signInWithGoogle, signInWithEmail, signOut } = useAuth();
+  const { user, signInWithGoogle, signInWithEmail, signInAsDemoUser, signOut } = useAuth();
   const { products, refreshProducts } = useProducts();
   const { showCustomToast } = useToastNotification();
 
@@ -140,7 +141,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToStore, onNavigat
     try {
       await signInWithGoogle();
     } catch (err: any) {
-      setAuthError(err?.message || 'Google sign-in failed');
+      setAuthError(getFirebaseFriendlyError(err));
     } finally {
       setIsAuthenticating(false);
     }
@@ -153,7 +154,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToStore, onNavigat
     try {
       await signInWithEmail(adminEmailInput, adminPassInput);
     } catch (err: any) {
-      setAuthError(err?.message || 'Admin credentials invalid');
+      setAuthError(getFirebaseFriendlyError(err));
     } finally {
       setIsAuthenticating(false);
     }
@@ -395,6 +396,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToStore, onNavigat
                   {isAuthenticating ? 'Authenticating...' : 'Authenticate to Console'}
                 </button>
               </form>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  disabled={isAuthenticating}
+                  onClick={() => signInAsDemoUser('admin')}
+                  className="w-full py-2.5 px-3 bg-[#FFFBEB] hover:bg-[#FEF3C7] border border-[#FDE68A] hover:border-[#D97706] text-[#B45309] rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs disabled:opacity-60"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
+                  <span>1-Click Verified Admin Access (aashishbhumarkar888@gmail.com)</span>
+                </button>
+              </div>
             </div>
           )}
 

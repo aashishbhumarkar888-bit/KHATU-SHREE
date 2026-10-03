@@ -1,12 +1,12 @@
 {
-  "projectId": "gen-lang-client-0029278542",
-  "appId": "1:792606732206:web:d24fd57af74c95b2ad223f",
-  "apiKey": "AIzaSyCfh8oglm6BtfDNh8iwHJeBNVXUQaQf-NI",
-  "authDomain": "gen-lang-client-0029278542.firebaseapp.com",
-  "firestoreDatabaseId": "khatu-store",
-  "storageBucket": "gen-lang-client-0029278542.firebasestorage.app",
-  "messagingSenderId": "792606732206",
-  "measurementId": "",
+  "projectId": "khatu-38e39",
+  "appId": "1:184172401153:web:e2cf05352d938760d12600",
+  "apiKey": "AIzaSyDETQyFeJBkHt3xAV6xtVrP58wSVpyW4sA",
+  "authDomain": "khatu-38e39.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "khatu-38e39.firebasestorage.app",
+  "messagingSenderId": "184172401153",
+  "measurementId": "G-73T2H72739",
   "oAuthClientId": "792606732206-18auabg0hpomb3tgkvgocopofh7pffr2.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

@@ -63,8 +63,37 @@ function MainApp() {
   const [conciergePrompt, setConciergePrompt] = useState('');
   const [isHamperBuilderOpen, setIsHamperBuilderOpen] = useState(false);
   const [isDropshipInfoOpen, setIsDropshipInfoOpen] = useState(false);
+  const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
 
   const { registerOpenAccountHandler } = useToastNotification();
+
+  // Global Keyboard Shortcut: Ctrl + Shift + A (handling CapsLock, 'KeyA', case-insensitive, capture phase)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+      const isShift = e.shiftKey;
+      const isKeyA = e.key === 'A' || e.key === 'a' || e.code === 'KeyA' || e.keyCode === 65;
+      const isCapsLock = typeof e.getModifierState === 'function' ? e.getModifierState('CapsLock') : false;
+
+      // Inside text inputs/textareas, allow standard Ctrl+A (Select All),
+      // but if Shift or CapsLock is combined with Ctrl+Shift+A or Ctrl+A(caps), toggle Admin Console
+      const isInputElement = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+      
+      const isTargetShortcut = 
+        (isCtrlOrMeta && isShift && isKeyA) ||
+        (isCtrlOrMeta && isCapsLock && isKeyA && !isInputElement) ||
+        (isCtrlOrMeta && isShift && isCapsLock && isKeyA);
+
+      if (isTargetShortcut) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsAdminAuthModalOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+  }, []);
 
   // Sync selected product when products load
   useEffect(() => {
@@ -202,6 +231,14 @@ function MainApp() {
           onNavigateHome={() => navigateToHome()}
         />
         <WhatsAppFloatButton />
+        <AdminAuthModal
+          isOpen={isAdminAuthModalOpen}
+          onClose={() => setIsAdminAuthModalOpen(false)}
+          onNavigateToAdmin={() => {
+            setIsAdminAuthModalOpen(false);
+            navigateToView('admin', '/admin');
+          }}
+        />
       </div>
     );
   }
@@ -366,6 +403,16 @@ function MainApp() {
         onExploreProducts={() => {
           setIsDropshipInfoOpen(false);
           navigateToShop('All Products');
+        }}
+      />
+
+      {/* Admin Secret Portal Modal (Triggered by Ctrl + Shift + A) */}
+      <AdminAuthModal
+        isOpen={isAdminAuthModalOpen}
+        onClose={() => setIsAdminAuthModalOpen(false)}
+        onNavigateToAdmin={() => {
+          setIsAdminAuthModalOpen(false);
+          navigateToView('admin', '/admin');
         }}
       />
     </div>
