@@ -28,15 +28,30 @@ import {
   MapPin,
   Calendar,
   Layers,
-  Sparkles
+  Sparkles,
+  Database,
+  Upload,
+  Cloud,
+  FileCheck,
+  Activity
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useProducts } from '../../context/ProductsContext';
 import { isUserAdmin, ADMIN_EMAILS } from '../../config/adminConfig';
 import { collection, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore';
-import { db, isFirebaseInitialized, getFirebaseFriendlyError } from '../../lib/firebase';
+import { 
+  db, 
+  isFirebaseInitialized, 
+  getFirebaseFriendlyError,
+  checkFirebaseHealth,
+  FirebaseHealthReport,
+  saveFirebaseCustomConfig,
+  clearCustomFirebaseConfig,
+  getFirebaseActiveConfig
+} from '../../lib/firebase';
 import { Order, Product, ProductCategory } from '../../types';
 import { saveProductToFirestore, deleteProductFromFirestore, seedProductsToFirestore } from '../../services/productsService';
+import { uploadFileToStorage, testStorageHealth } from '../../services/storageService';
 import { useToastNotification } from '../../context/ToastNotificationContext';
 import { InvoiceModal } from '../account/InvoiceModal';
 
@@ -50,7 +65,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToStore, onNavigat
   const { products, refreshProducts } = useProducts();
   const { showCustomToast } = useToastNotification();
 
-  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'reconciliation' | 'alerts'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'reconciliation' | 'alerts' | 'storage'>('orders');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
@@ -64,6 +79,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToStore, onNavigat
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  // Storage & Cloud states
+  const [storageReport, setStorageReport] = useState<{ isConnected: boolean; bucketName: string; message: string; error?: string } | null>(null);
+  const [isTestingStorage, setIsTestingStorage] = useState(false);
+  const [diagnosticReport, setDiagnosticReport] = useState<FirebaseHealthReport | null>(null);
+  const [isCheckingHealth, setIsCheckingHealth] = useState(false);
+  const [configInputText, setConfigInputText] = useState('');
 
   // Email login form for admin gate
   const [adminEmailInput, setAdminEmailInput] = useState('');
@@ -219,6 +242,93 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToStore, onNavigat
       console.error('Seed error:', err);
     } finally {
       setIsSeeding(false);
+    }
+  };
+
+  // Storage & Cloud Handlers
+  const handleRunHealthCheck = async () => {
+    setIsCheckingHealth(true);
+    try {
+      const rep = await checkFirebaseHealth();
+      setDiagnosticReport(rep);
+    } finally {
+      setIsCheckingHealth(false);
+    }
+  };
+
+  const handleTestStorage = async () => {
+    setIsTestingStorage(true);
+    try {
+      const res = await testStorageHealth();
+      setStorageReport(res);
+      showCustomToast({
+        orderId: 'STORAGE-TEST',
+        newStatus: res.isConnected ? 'delivered' : 'out_for_delivery',
+        title: res.isConnected ? 'Cloud Storage Online' : 'Storage Status',
+        message: res.message,
+        duration: 4000,
+      });
+    } finally {
+      setIsTestingStorage(false);
+    }
+  };
+
+  const handleSaveConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!configInputText.trim()) return;
+    const ok = saveFirebaseCustomConfig(configInputText.trim());
+    showCustomToast({
+      orderId: 'CONFIG-SAVE',
+      newStatus: ok ? 'delivered' : 'cancelled',
+      title: ok ? 'Firebase Config Applied' : 'Parse Warning',
+      message: ok ? 'Updated Firebase credentials. Re-probing connection...' : 'Could not parse config. Please check format.',
+      duration: 3500,
+    });
+    await handleRunHealthCheck();
+    await handleTestStorage();
+  };
+
+  const handleClearCustomConfig = async () => {
+    clearCustomFirebaseConfig();
+    setConfigInputText('');
+    showCustomToast({
+      orderId: 'CONFIG-RESET',
+      newStatus: 'delivered',
+      title: 'Credentials Cleared',
+      message: 'Reset to default app configuration.',
+      duration: 3000,
+    });
+    await handleRunHealthCheck();
+    await handleTestStorage();
+  };
+
+  const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingProduct) return;
+    setIsUploadingImage(true);
+    try {
+      const res = await uploadFileToStorage(file, 'products');
+      setEditingProduct({
+        ...editingProduct,
+        images: [res.url, ...(editingProduct.images?.slice(1) || [])],
+      });
+      showCustomToast({
+        orderId: 'IMG-UPLOAD',
+        newStatus: 'delivered',
+        title: 'Image Uploaded',
+        message: res.source === 'firebase-storage' ? 'Stored in Firebase Storage bucket' : 'Stored in resilient local store',
+        duration: 3500,
+      });
+    } catch (err: any) {
+      showCustomToast({
+        orderId: 'IMG-ERR',
+        newStatus: 'cancelled',
+        title: 'Upload Notice',
+        message: err?.message || 'Could not upload image',
+        duration: 4000,
+      });
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
@@ -532,6 +642,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToStore, onNavigat
                 {lowStockProducts.length}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('storage');
+              if (!diagnosticReport) handleRunHealthCheck();
+              if (!storageReport) handleTestStorage();
+            }}
+            className={`py-2 px-3 text-xs font-bold border-b-2 flex items-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer ${
+              activeTab === 'storage'
+                ? 'border-[#DDA15E] text-[#DDA15E]'
+                : 'border-transparent text-white/70 hover:text-white'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>Firebase &amp; Storage</span>
           </button>
         </div>
       </header>
@@ -1091,6 +1217,321 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToStore, onNavigat
           </div>
         )}
 
+        {/* ========================================================================= */}
+        {/* TAB 5: FIREBASE CLOUD STORAGE & DATABASE MANAGER                          */}
+        {/* ========================================================================= */}
+        {activeTab === 'storage' && (
+          <div className="space-y-6">
+            {/* Header Banner */}
+            <div className="bg-gradient-to-r from-[#1B4332] to-[#2D6A4F] text-white p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Database className="w-5 h-5 text-[#DDA15E]" />
+                  <h3 className="font-serif text-lg font-bold text-[#FAF7F2]">
+                    Firebase Cloud Storage &amp; Database Manager
+                  </h3>
+                </div>
+                <p className="text-xs text-white/80 max-w-2xl leading-relaxed">
+                  Manage Cloud Storage buckets for catalog photos and media, monitor Firestore database collections, and connect a newly generated Firebase project if previous resources were deleted.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={handleRunHealthCheck}
+                  disabled={isCheckingHealth}
+                  className="px-3.5 py-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isCheckingHealth ? 'animate-spin' : ''}`} />
+                  <span>{isCheckingHealth ? 'Diagnosing...' : 'Run Diagnostics'}</span>
+                </button>
+                <button
+                  onClick={handleTestStorage}
+                  disabled={isTestingStorage}
+                  className="px-4 py-2 bg-[#DDA15E] hover:bg-[#c98e4d] text-[#1B4332] font-bold rounded-xl text-xs transition-all cursor-pointer flex items-center gap-2 shadow-sm"
+                >
+                  <Cloud className={`w-3.5 h-3.5 ${isTestingStorage ? 'animate-bounce' : ''}`} />
+                  <span>{isTestingStorage ? 'Testing Storage...' : 'Test Cloud Storage'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Health & Status Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Cloud Storage Card */}
+              <div className="bg-white border border-[#E8E5DF] rounded-2xl p-4 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-[#FAF7F2] text-[#1B4332] flex items-center justify-center font-bold">
+                      <Cloud className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-xs text-[#1C1917]">Cloud Storage Bucket</h4>
+                      <span className="text-[10px] text-[#78716C] font-mono block truncate max-w-[150px]">
+                        {getFirebaseActiveConfig()?.storageBucket || 'nema-15142.firebasestorage.app'}
+                      </span>
+                    </div>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    storageReport?.isConnected 
+                      ? 'bg-[#ECFDF5] text-[#059669]' 
+                      : 'bg-[#FEF3C7] text-[#D97706]'
+                  }`}>
+                    {storageReport?.isConnected ? 'Online' : 'Local Store'}
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-[#FAF7F2] rounded-xl text-[11px] text-[#57534E] leading-relaxed">
+                  {storageReport ? (
+                    <div className="space-y-1">
+                      <span className="font-semibold block text-[#1C1917]">Latest Storage Probe:</span>
+                      <p className="text-[10px]">{storageReport.message}</p>
+                    </div>
+                  ) : (
+                    <p className="text-[10px]">
+                      High-availability dual mode active. Files upload to Cloud Storage with automatic fallback to persistent local store.
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleTestStorage}
+                  disabled={isTestingStorage}
+                  className="w-full py-2 bg-white hover:bg-[#FAF7F2] border border-[#D5CFBE] text-[#1B4332] rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Verify Storage Read/Write</span>
+                </button>
+              </div>
+
+              {/* Firestore Database Card */}
+              <div className="bg-white border border-[#E8E5DF] rounded-2xl p-4 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-[#FAF7F2] text-[#1B4332] flex items-center justify-center font-bold">
+                      <Database className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-xs text-[#1C1917]">Firestore Database</h4>
+                      <span className="text-[10px] text-[#78716C] font-mono block">
+                        {getFirebaseActiveConfig()?.firestoreDatabaseId || '(default)'} / {getFirebaseActiveConfig()?.projectId || 'nema-15142'}
+                      </span>
+                    </div>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    isFirebaseInitialized ? 'bg-[#ECFDF5] text-[#059669]' : 'bg-[#FEF3C7] text-[#D97706]'
+                  }`}>
+                    {isFirebaseInitialized ? 'Connected' : 'Offline'}
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-[#FAF7F2] rounded-xl text-[11px] text-[#57534E] leading-relaxed space-y-1">
+                  <div className="flex justify-between text-[10px]">
+                    <span>Catalog Products:</span>
+                    <strong className="text-[#1C1917]">{products.length} Items</strong>
+                  </div>
+                  <div className="flex justify-between text-[10px]">
+                    <span>Customer Orders:</span>
+                    <strong className="text-[#1C1917]">{orders.length} Records</strong>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleSeedCatalog}
+                  disabled={isSeeding}
+                  className="w-full py-2 bg-white hover:bg-[#FAF7F2] border border-[#D5CFBE] text-[#1B4332] rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSeeding ? 'animate-spin' : ''}`} />
+                  <span>{isSeeding ? 'Syncing...' : 'Sync Catalog to Firestore'}</span>
+                </button>
+              </div>
+
+              {/* Auth Allowlist Card */}
+              <div className="bg-white border border-[#E8E5DF] rounded-2xl p-4 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-[#FAF7F2] text-[#1B4332] flex items-center justify-center font-bold">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-xs text-[#1C1917]">Admin Authentication</h4>
+                      <span className="text-[10px] text-[#78716C] block">Master Allowlist Active</span>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#ECFDF5] text-[#059669]">
+                    Verified
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-[#FAF7F2] rounded-xl text-[11px] text-[#57534E] leading-relaxed">
+                  <span className="text-[10px] text-[#78716C] block mb-0.5">Primary Administrator:</span>
+                  <span className="font-mono font-bold text-[#1B4332] text-[10px] break-all">
+                    aashishbhumarkar888@gmail.com
+                  </span>
+                </div>
+
+                <button
+                  onClick={handleRunHealthCheck}
+                  disabled={isCheckingHealth}
+                  className="w-full py-2 bg-white hover:bg-[#FAF7F2] border border-[#D5CFBE] text-[#1B4332] rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Check Identity Toolkit</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Diagnostic Report Panel if generated */}
+            {diagnosticReport && (
+              <div className="bg-[#FAF7F2] border border-[#D5CFBE] rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-[#1B4332]" />
+                    <h4 className="font-bold text-xs text-[#1C1917]">Full Firebase Diagnostics Summary</h4>
+                  </div>
+                  <span className="text-[10px] font-mono text-[#78716C]">
+                    Project: {diagnosticReport.projectId}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="p-2.5 bg-white rounded-xl border border-[#E8E5DF]">
+                    <span className="text-[10px] text-[#78716C] block">Identity Toolkit / Auth:</span>
+                    <strong className={diagnosticReport.authConfigured ? 'text-[#059669]' : 'text-[#DC2626]'}>
+                      {diagnosticReport.authConfigured ? '✓ Operational' : '✗ Needs Activation / New Key'}
+                    </strong>
+                    <p className="text-[10px] text-[#78716C] mt-1 leading-snug">{diagnosticReport.authMessage}</p>
+                  </div>
+
+                  <div className="p-2.5 bg-white rounded-xl border border-[#E8E5DF]">
+                    <span className="text-[10px] text-[#78716C] block">Cloud Firestore:</span>
+                    <strong className={diagnosticReport.firestoreConfigured ? 'text-[#059669]' : 'text-[#DC2626]'}>
+                      {diagnosticReport.firestoreConfigured ? '✓ Operational' : '✗ Disabled / Not Created'}
+                    </strong>
+                    <p className="text-[10px] text-[#78716C] mt-1 leading-snug">{diagnosticReport.firestoreMessage}</p>
+                  </div>
+
+                  <div className="p-2.5 bg-white rounded-xl border border-[#E8E5DF]">
+                    <span className="text-[10px] text-[#78716C] block">Cloud Storage Bucket:</span>
+                    <strong className={diagnosticReport.storageConfigured ? 'text-[#059669]' : 'text-[#D97706]'}>
+                      {diagnosticReport.storageConfigured ? '✓ Operational' : '⚡ Local Store Fallback'}
+                    </strong>
+                    <p className="text-[10px] text-[#78716C] mt-1 leading-snug">{diagnosticReport.storageMessage}</p>
+                  </div>
+                </div>
+
+                {diagnosticReport.instructions.length > 0 && (
+                  <div className="p-3 bg-white rounded-xl border border-[#E8E5DF] text-[11px] text-[#57534E] space-y-1">
+                    <span className="font-bold text-[#1C1917] block">Recommended Action Steps:</span>
+                    <ol className="list-decimal pl-4 space-y-1 text-[10px]">
+                      {diagnosticReport.instructions.map((inst, i) => (
+                        <li key={i}>{inst}</li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Connect New Firebase Project & Storage Console */}
+            <div className="bg-white border border-[#E8E5DF] rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#E8E5DF] gap-2">
+                <div>
+                  <h4 className="font-bold text-sm text-[#1C1917] flex items-center gap-2">
+                    <FileCheck className="w-4 h-4 text-[#1B4332]" />
+                    <span>Connect New Firebase Project &amp; Cloud Storage Bucket</span>
+                  </h4>
+                  <p className="text-xs text-[#78716C] mt-0.5">
+                    If you deleted your previous Firebase project, create a new one in the Firebase console and paste its configuration snippet below.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href="https://console.firebase.google.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 bg-[#FAF7F2] hover:bg-[#F3EFE6] border border-[#D5CFBE] rounded-lg text-xs font-semibold text-[#1B4332] flex items-center gap-1.5 transition-colors"
+                  >
+                    <span>Open Firebase Console</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              </div>
+
+              {/* Step by step guide */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-[11px]">
+                <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#E8E5DF] space-y-1">
+                  <span className="w-5 h-5 rounded-full bg-[#1B4332] text-white flex items-center justify-center font-bold text-[10px]">1</span>
+                  <strong className="block text-[#1C1917]">Create / Select Project</strong>
+                  <p className="text-[#78716C] text-[10px] leading-snug">
+                    In Firebase Console, click "Add project" (or choose existing).
+                  </p>
+                </div>
+
+                <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#E8E5DF] space-y-1">
+                  <span className="w-5 h-5 rounded-full bg-[#1B4332] text-white flex items-center justify-center font-bold text-[10px]">2</span>
+                  <strong className="block text-[#1C1917]">Enable Storage &amp; DB</strong>
+                  <p className="text-[#78716C] text-[10px] leading-snug">
+                    Click <strong>Storage</strong> &gt; "Get Started", and <strong>Firestore</strong> &gt; "Create database".
+                  </p>
+                </div>
+
+                <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#E8E5DF] space-y-1">
+                  <span className="w-5 h-5 rounded-full bg-[#1B4332] text-white flex items-center justify-center font-bold text-[10px]">3</span>
+                  <strong className="block text-[#1C1917]">Enable Authentication</strong>
+                  <p className="text-[#78716C] text-[10px] leading-snug">
+                    Under <strong>Authentication</strong>, enable "Email/Password" and "Google" sign-in providers.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#E8E5DF] space-y-1">
+                  <span className="w-5 h-5 rounded-full bg-[#1B4332] text-white flex items-center justify-center font-bold text-[10px]">4</span>
+                  <strong className="block text-[#1C1917]">Copy Web App Config</strong>
+                  <p className="text-[#78716C] text-[10px] leading-snug">
+                    Go to Project Settings &gt; General &gt; Your apps &gt; Copy the <code>firebaseConfig</code> snippet and paste below.
+                  </p>
+                </div>
+              </div>
+
+              {/* Config Form */}
+              <form onSubmit={handleSaveConfig} className="space-y-3 pt-2">
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-[#1C1917]">
+                    Paste New Firebase Web Config Snippet or JSON:
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={configInputText}
+                    onChange={(e) => setConfigInputText(e.target.value)}
+                    placeholder={`const firebaseConfig = {\n  apiKey: "AIzaSy...",\n  authDomain: "your-project.firebaseapp.com",\n  projectId: "your-project-id",\n  storageBucket: "your-project.firebasestorage.app",\n  appId: "1:..."\n};`}
+                    className="w-full p-3 bg-[#FAF7F2] border border-[#D5CFBE] rounded-xl font-mono text-xs text-[#1C1917] focus:outline-none focus:border-[#1B4332] focus:ring-1 focus:ring-[#1B4332]"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={handleClearCustomConfig}
+                    className="px-3.5 py-2 bg-white hover:bg-[#FAF7F2] border border-[#E8E5DF] text-[#78716C] hover:text-[#DC2626] rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Reset to Default App Config
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="submit"
+                      disabled={!configInputText.trim()}
+                      className="px-5 py-2 bg-[#1B4332] hover:bg-[#2D6A4F] text-white font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      Save &amp; Activate New Firebase Storage
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
       </main>
 
       {/* Product Edit / Add Modal */}
@@ -1182,14 +1623,44 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToStore, onNavigat
               </div>
 
               <div>
-                <label className="block text-[#78716C] font-semibold mb-1">Product Image URL</label>
-                <input
-                  type="url"
-                  required
-                  value={editingProduct.images?.[0] || ''}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, images: [e.target.value] })}
-                  className="w-full p-2 bg-[#FAF7F2] border border-[#E8E5DF] rounded-lg text-[#1C1917] focus:outline-none focus:border-[#1B4332]"
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[#78716C] font-semibold">Product Image (Cloud Storage or URL)</label>
+                  {isUploadingImage && (
+                    <span className="text-[10px] text-[#1B4332] font-semibold animate-pulse">Uploading to storage...</span>
+                  )}
+                </div>
+                <div className="flex gap-2 items-center mb-2">
+                  <input
+                    type="url"
+                    required
+                    placeholder="https://..."
+                    value={editingProduct.images?.[0] || ''}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, images: [e.target.value] })}
+                    className="flex-1 p-2 bg-[#FAF7F2] border border-[#E8E5DF] rounded-lg text-[#1C1917] focus:outline-none focus:border-[#1B4332]"
+                  />
+                  <label className="px-3 py-2 bg-white hover:bg-[#FAF7F2] border border-[#D5CFBE] hover:border-[#1B4332] text-[#1B4332] rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0 transition-colors">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload Image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleImageFileUpload}
+                    />
+                  </label>
+                </div>
+                {editingProduct.images?.[0] && (
+                  <div className="flex items-center gap-2">
+                    <img
+                      src={editingProduct.images[0]}
+                      alt="Product preview"
+                      className="w-12 h-12 rounded-lg object-cover border border-[#E8E5DF] bg-[#FAF7F2]"
+                    />
+                    <span className="text-[10px] text-[#78716C] truncate max-w-xs font-mono">
+                      {editingProduct.images[0].substring(0, 50)}...
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div>

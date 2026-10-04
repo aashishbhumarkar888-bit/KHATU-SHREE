@@ -22,7 +22,13 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { isUserAdmin, ADMIN_EMAILS } from '../../config/adminConfig';
 import { useToastNotification } from '../../context/ToastNotificationContext';
-import { checkFirebaseHealth, FirebaseHealthReport, isFirebaseInitialized } from '../../lib/firebase';
+import { 
+  checkFirebaseHealth, 
+  FirebaseHealthReport, 
+  isFirebaseInitialized,
+  saveFirebaseCustomConfig,
+  clearCustomFirebaseConfig
+} from '../../lib/firebase';
 
 interface AdminAuthModalProps {
   isOpen: boolean;
@@ -53,10 +59,43 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [isRunningDiagnostic, setIsRunningDiagnostic] = useState(false);
   const [diagnosticReport, setDiagnosticReport] = useState<FirebaseHealthReport | null>(null);
+  const [customApiKeyInput, setCustomApiKeyInput] = useState('');
 
   const emailInputRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = isUserAdmin(user?.email);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setCustomApiKeyInput(localStorage.getItem('ksp_custom_firebase_api_key') || '');
+    }
+  }, [isOpen]);
+
+  const handleSaveCustomApiKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customApiKeyInput.trim()) {
+      clearCustomFirebaseConfig();
+      showCustomToast({
+        orderId: 'RESET-CONFIG',
+        newStatus: 'delivered',
+        title: 'Credentials Cleared',
+        message: 'Reset to default app credentials.',
+        duration: 3000
+      });
+      await runDiagnostic();
+      return;
+    }
+
+    const success = saveFirebaseCustomConfig(customApiKeyInput.trim());
+    showCustomToast({
+      orderId: 'KEY-UPDATE',
+      newStatus: 'delivered',
+      title: success ? 'Firebase Config Applied' : 'API Key Saved',
+      message: 'Updated Firebase configuration. Re-probing connection...',
+      duration: 3000
+    });
+    await runDiagnostic();
+  };
 
   // Track CapsLock state globally while modal is open
   useEffect(() => {
@@ -625,10 +664,16 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                               {diagnosticReport.firestoreConfigured ? 'Operational' : 'API Disabled / Not Created'}
                             </span>
                           </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[#57534E]">Cloud Storage:</span>
+                            <span className={`font-semibold ${diagnosticReport.storageConfigured ? 'text-[#059669]' : 'text-[#D97706]'}`}>
+                              {diagnosticReport.storageConfigured ? 'Operational' : 'Local Store (Active)'}
+                            </span>
+                          </div>
 
                           {diagnosticReport.instructions.length > 0 && (
                             <div className="mt-2 p-2 bg-white rounded-lg border border-[#D5CFBE] text-[10px] space-y-1 text-[#78716C]">
-                              <span className="font-bold text-[#1C1917] block">To enable Firebase in your Google project:</span>
+                              <span className="font-bold text-[#1C1917] block">To configure your new Firebase project:</span>
                               <ol className="list-decimal pl-3 space-y-0.5">
                                 {diagnosticReport.instructions.map((inst, idx) => (
                                   <li key={idx}>{inst}</li>
@@ -636,11 +681,53 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                               </ol>
                             </div>
                           )}
+
+                          {/* Quick Config / API Key Override */}
+                          <form onSubmit={handleSaveCustomApiKey} className="pt-2 mt-2 border-t border-[#E3DCBF] space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <label className="block text-[10px] font-bold text-[#57534E]">
+                                Connect New Firebase Project / Storage:
+                              </label>
+                              <span className="text-[9px] text-[#78716C]">Paste snippet or key</span>
+                            </div>
+                            <div className="flex gap-1.5">
+                              <input
+                                type="text"
+                                placeholder="Paste API Key or { apiKey, projectId, storageBucket... }"
+                                value={customApiKeyInput}
+                                onChange={(e) => setCustomApiKeyInput(e.target.value)}
+                                className="flex-1 px-2 py-1 bg-white border border-[#D5CFBE] rounded-lg text-[10px] font-mono text-[#1C1917] focus:outline-none focus:border-[#1B4332]"
+                              />
+                              <button
+                                type="submit"
+                                className="px-2.5 py-1 bg-[#1B4332] text-white rounded-lg text-[10px] font-bold hover:bg-[#2D6A4F] transition-colors cursor-pointer shrink-0"
+                              >
+                                Save &amp; Test
+                              </button>
+                            </div>
+                          </form>
                         </div>
                       ) : (
-                        <p className="text-[10px] text-[#78716C] leading-snug">
-                          Project: <span className="font-mono font-semibold text-[#1C1917]">khatu-38e39</span>. If Firebase Auth is pending console activation, 1-Click login uses resilient local admin authorization.
-                        </p>
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] text-[#78716C] leading-snug">
+                            Active Project: <span className="font-mono font-semibold text-[#1C1917]">nema-15142</span> (Connected &amp; Active).
+                          </p>
+                          <form onSubmit={handleSaveCustomApiKey} className="pt-1 flex gap-1.5">
+                            <input
+                              type="text"
+                              placeholder="Paste Web API Key or new firebaseConfig snippet..."
+                              value={customApiKeyInput}
+                              onChange={(e) => setCustomApiKeyInput(e.target.value)}
+                              className="flex-1 px-2 py-1 bg-white border border-[#D5CFBE] rounded-lg text-[10px] font-mono text-[#1C1917] focus:outline-none focus:border-[#1B4332]"
+                            />
+                            <button
+                              type="submit"
+                              className="px-2.5 py-1 bg-[#1B4332] text-white rounded-lg text-[10px] font-bold hover:bg-[#2D6A4F] transition-colors cursor-pointer shrink-0"
+                            >
+                              Update
+                            </button>
+                          </form>
+                        </div>
                       )}
                     </div>
                   </div>

@@ -1,12 +1,12 @@
 {
-  "projectId": "khatu-38e39",
-  "appId": "1:184172401153:web:e2cf05352d938760d12600",
-  "apiKey": "AIzaSyDETQyFeJBkHt3xAV6xtVrP58wSVpyW4sA",
-  "authDomain": "khatu-38e39.firebaseapp.com",
-  "firestoreDatabaseId": "(default)",
-  "storageBucket": "khatu-38e39.firebasestorage.app",
-  "messagingSenderId": "184172401153",
-  "measurementId": "G-73T2H72739",
-  "oAuthClientId": "792606732206-18auabg0hpomb3tgkvgocopofh7pffr2.apps.googleusercontent.com",
+  "projectId": "nema-15142",
+  "appId": "1:780192735980:web:74954647e833e2eff9bbc9",
+  "apiKey": "AIzaSyBFEkLqDnWBa8KXsXe9cyLzJ_dqIOUYyaM",
+  "authDomain": "nema-15142.firebaseapp.com",
+  "firestoreDatabaseId": "khatu-store",
+  "storageBucket": "nema-15142.firebasestorage.app",
+  "messagingSenderId": "780192735980",
+  "measurementId": "",
+  "oAuthClientId": "780192735980-vql5scuds3qj19jrii90q03326rd574s.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

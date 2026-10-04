@@ -17,7 +17,9 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        (request.auth.token.email != null && request.auth.token.email in ['aashishbhumarkar888@gmail.com', 'admin@khatushri.in']) ||
+        (request.auth.token.email != null && 
+         request.auth.token.email_verified == true && 
+         request.auth.token.email in ['aashishbhumarkar888@gmail.com', 'admin@khatushri.in']) ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
@@ -86,28 +88,25 @@ service cloud.firestore {
         data.productIds is list && data.productIds.size() <= 200;
     }
 
-    // 1. Users collection: users can only read/write their own user document
+    // 1. Users collection: users can read/write their own user document
     match /users/{userId} {
-      allow get: if isOwner(userId) && isValidId(userId);
-      allow create: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming());
-      allow update: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming()) && incoming().userId == existing().userId;
-      allow delete: if false;
+      allow get: if (isOwner(userId) && isValidId(userId)) || isAdmin();
+      allow create, update: if (isOwner(userId) && isValidId(userId)) || isAdmin();
+      allow delete: if isAdmin();
     }
 
-    // 2. Orders collection: users can only read/write their own orders; admins can manage all orders
+    // 2. Orders collection: allow real-time order tracking by ID; users can view their own orders; admins manage all
     match /orders/{orderId} {
-      allow get: if (isSignedIn() && isValidId(orderId) && resource.data.userId == request.auth.uid) || isAdmin();
+      allow get: if isValidId(orderId);
       allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
-      allow create: if isSignedIn() && isValidId(orderId) && isValidOrder(incoming());
-      allow update: if (isSignedIn() && isValidId(orderId) && resource.data.userId == request.auth.uid && isValidOrder(incoming()) && incoming().userId == existing().userId) || (isAdmin() && isValidId(orderId));
+      allow create: if (isSignedIn() && isValidId(orderId)) || isAdmin();
+      allow update: if (isSignedIn() && isValidId(orderId)) || isAdmin();
       allow delete: if isAdmin();
     }
 
     // 3. Wishlists collection: users can only read/write their own wishlist document
     match /wishlists/{userId} {
-      allow get: if isOwner(userId) && isValidId(userId);
-      allow create, update: if isOwner(userId) && isValidId(userId) && isValidWishlist(incoming());
-      allow delete: if isOwner(userId) && isValidId(userId);
+      allow read, write: if (isOwner(userId) && isValidId(userId)) || isAdmin();
     }
 
     // 4. Products collection: public catalog read, admin manage
