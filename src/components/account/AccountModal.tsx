@@ -232,8 +232,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       const signedInUser = await signInWithGoogle();
       if (signedInUser) {
         await refreshOrders();
-        setSuccessMessage('Successfully signed in with Google!');
-        setTimeout(() => setSuccessMessage(''), 3000);
+        setActiveTab('orders');
+        setSuccessMessage(`Welcome, ${signedInUser.displayName || signedInUser.email || 'Patron'}! Successfully signed in.`);
+        setTimeout(() => setSuccessMessage(''), 4000);
       }
     } catch (e: any) {
       if (e?.code !== 'auth/popup-closed-by-user' && e?.code !== 'auth/cancelled-popup-request') {

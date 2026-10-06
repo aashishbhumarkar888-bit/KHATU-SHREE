@@ -238,14 +238,19 @@ if (typeof window !== 'undefined') {
   testConnection().catch(() => {});
 }
 
-export const SCOPES = [
-  'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/drive.readonly'
+// Google Drive Scopes for optional invoice backup export
+export const DRIVE_SCOPES = [
+  'https://www.googleapis.com/auth/drive.file'
 ];
+export const SCOPES = DRIVE_SCOPES;
 
+// Primary Google Authentication Provider for Khatu Shri
 export const googleProvider = new GoogleAuthProvider();
-SCOPES.forEach((scope) => {
-  googleProvider.addScope(scope);
+googleProvider.addScope('email');
+googleProvider.addScope('profile');
+googleProvider.addScope('openid');
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
 });
 
 // In-memory access token cache for Google Workspace & Drive integration
